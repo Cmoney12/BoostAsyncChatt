@@ -80,7 +80,7 @@ public:
         return data;
     }**/
 
-    void deliver(const std::string& msg) override {
+    void deliver(const std::string& msg) {
         bool write_in_progress = !message_que.empty();
         message_que.push_back(msg);
         if (!write_in_progress)
