@@ -20,16 +20,13 @@ typedef std::shared_ptr<chat_participant> chat_participant_ptr;
 class chat_room {
 public:
 
-    void join(const std::string& username, chat_participant_ptr participant) {
+    void join(const std::string& username, const chat_participant_ptr& participant) {
         participants.emplace(username, participant);
-        for (auto message: outgoing_message)
+        for (const auto& message: outgoing_message)
             participant->deliver(message);
-        //for(auto message: outgoing_message) {
-        //    participant->deliver(message);
-        // }
     }
 
-    void leave(chat_participant_ptr participant) {
+    void leave(const chat_participant_ptr& participant) {
         auto map_iter = participants.begin();
         while (map_iter != participants.end()) {
             if(map_iter->second==participant) {
@@ -45,7 +42,7 @@ public:
         while (outgoing_message.size() > max_recent_msgs) {
             outgoing_message.pop_front();
         }
-        for (auto participant: participants)
+        for (const auto& participant: participants)
             participant.second->deliver(message);
     }
 
@@ -83,8 +80,7 @@ public:
         return data;
     }**/
 
-    void deliver(const std::string& msg)
-    {
+    void deliver(const std::string& msg) override {
         bool write_in_progress = !message_que.empty();
         message_que.push_back(msg);
         if (!write_in_progress)
@@ -165,12 +161,10 @@ public:
                 });
     }
 private:
-    std::string message;
     io_context& io_context;
     ip::tcp::acceptor acceptor;
     std::optional<ip::tcp::socket> socket;
     chat_room room_;
-    std::string username;
 };
 
 int main() {
