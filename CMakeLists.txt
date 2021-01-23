@@ -10,5 +10,5 @@ ENDIF(Boost_FOUND)
 
 SET(USED_LIBS ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} ${Boost_REGEX_LIBRARY})
 
-add_executable(boostAsyncServer main.cpp)
+add_executable(boostAsyncServer server.cpp)
 TARGET_LINK_LIBRARIES(boostAsyncServer ${USED_LIBS})
