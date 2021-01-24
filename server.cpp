@@ -20,24 +20,14 @@ typedef std::shared_ptr<chat_participant> chat_participant_ptr;
 class chat_room {
 public:
 
-    void join(const std::string& username, const chat_participant_ptr& participant) {
-        std::cout <<"Joined" << std::endl;
+    void join(const chat_participant_ptr& participant) {
         participants.insert(participant);
+        participant->deliver("Welcome to chat\n\r");
         for (const auto& message: outgoing_message)
             participant->deliver(message);
     }
 
-    /**
-    void leave(chat_participant_ptr participant) {
-        auto map_iter = participants.begin();
-        while (map_iter != participants.end()) {
-            if(map_iter->second==participant) {
-                participants.erase(map_iter);
-                break;
-            }
-            map_iter++;
-        }
-    }**/
+
     void leave(const chat_participant_ptr& participant) {
         participants.erase(participant);
         std::cout << "left" << std::endl;
@@ -48,6 +38,7 @@ public:
         while (outgoing_message.size() > max_recent_msgs) {
             outgoing_message.pop_front();
         }
+        
         for (const auto& participant: participants)
             participant->deliver(message);
     }
@@ -67,28 +58,11 @@ public:
     }
 
     void start() {
-        //prompt("What is your username: ");
-        //std::string username;
-        //username = get_username();
-        room_.join("user", shared_from_this());
+        room_.join(shared_from_this());
         async_read();
     }
 
-    //Synchronous operations to get username
-    /**
-    static void prompt(const std::string& message) {
-        boost::asio::streambuf buf;
-        write(socket, buffer(message + "\n"));
-    }
-
-    static std::string get_username() {
-        boost::asio::streambuf buf;
-        read_until(socket, buf, "\n");
-        std::string data = buffer_cast<const char*>(buf.data());
-        return data;
-    }
-    **/
-    void deliver(const std::string& msg) override {
+    void deliver(const std::string& msg) {
         bool write_in_progress = !message_que.empty();
         message_que.push_back(msg);
         if (!write_in_progress) {
@@ -100,13 +74,11 @@ public:
 private:
 
     void async_read() {
-        std::cout << "read" << std::endl;
         auto self(shared_from_this());
-        async_read_until(socket_, buf, "\n",
+        ::async_read_until(socket_, buf, "\n",
                          [this, self](boost::system::error_code error_code, std::size_t size) {
-            if(!error_code) {
+            if(!error_code) 
                 on_read(error_code, size);
-            }
             else
                 room_.leave(shared_from_this());
         });
@@ -116,9 +88,8 @@ private:
     {
         if(!error)
         {
-            std::cout << "Hit" << std::endl;
             std::stringstream message;
-            message << socket_.remote_endpoint(error) << ": " << std::istream(&buf).rdbuf();
+            message << socket_.remote_endpoint(error) << "> " << std::istream(&buf).rdbuf();
             buf.consume(bytes_transferred);
             room_.deliver(message.str());
             async_read();
@@ -170,7 +141,6 @@ public:
         acceptor.async_accept(*socket, [&] (boost::system::error_code err) {
             if (!err) {
                 std::make_shared<session>(std::move(*socket), room_)->start();
-                std::cout << "client Connected " << std::endl;
             }
             async_accept();
         });
@@ -186,7 +156,6 @@ int main() {
     try {
         io_context io_context;
         server srv(io_context, 1234);
-        srv.async_accept();
         io_context.run();
     }
     catch (std::exception& e) {
