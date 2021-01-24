@@ -2,7 +2,7 @@
 #include <memory>
 #include <boost/asio.hpp>
 #include <optional>
-#include <unordered_map>
+#include <unordered_set>
 #include <deque>
 
 using namespace boost::asio;
@@ -21,12 +21,14 @@ class chat_room {
 public:
 
     void join(const std::string& username, const chat_participant_ptr& participant) {
-        participants.emplace(username, participant);
+        std::cout <<"Joined" << std::endl;
+        participants.insert(participant);
         for (const auto& message: outgoing_message)
             participant->deliver(message);
     }
 
-    void leave(const chat_participant_ptr& participant) {
+    /**
+    void leave(chat_participant_ptr participant) {
         auto map_iter = participants.begin();
         while (map_iter != participants.end()) {
             if(map_iter->second==participant) {
@@ -35,6 +37,10 @@ public:
             }
             map_iter++;
         }
+    }**/
+    void leave(const chat_participant_ptr& participant) {
+        participants.erase(participant);
+        std::cout << "left" << std::endl;
     }
 
     void deliver(std::string const& message) {
@@ -43,11 +49,11 @@ public:
             outgoing_message.pop_front();
         }
         for (const auto& participant: participants)
-            participant.second->deliver(message);
+            participant->deliver(message);
     }
 
 private:
-    std::unordered_map<std::string, chat_participant_ptr> participants;
+    std::unordered_set<chat_participant_ptr> participants;
     outgoing outgoing_message;
     enum { max_recent_msgs = 100 };
 };
@@ -59,32 +65,33 @@ public:
             : socket_(std::move(socket)), room_(room)
     {
     }
+
     void start() {
-        ///prompt("What is your username: ");
-        std::string username;
+        //prompt("What is your username: ");
+        //std::string username;
         //username = get_username();
-        username = "P";
-        room_.join(username, shared_from_this());
+        room_.join("user", shared_from_this());
+        async_read();
     }
-    /**
+
     //Synchronous operations to get username
-    void prompt(const std::string& message) {
+    /**
+    static void prompt(const std::string& message) {
         boost::asio::streambuf buf;
         write(socket, buffer(message + "\n"));
     }
 
-    std::string get_username() {
+    static std::string get_username() {
         boost::asio::streambuf buf;
         read_until(socket, buf, "\n");
         std::string data = buffer_cast<const char*>(buf.data());
         return data;
-    }**/
-
-    void deliver(const std::string& msg) {
+    }
+    **/
+    void deliver(const std::string& msg) override {
         bool write_in_progress = !message_que.empty();
         message_que.push_back(msg);
-        if (!write_in_progress)
-        {
+        if (!write_in_progress) {
             on_write();
         }
     }
@@ -92,13 +99,14 @@ public:
 
 private:
 
-    void async_read()
-    {
+    void async_read() {
+        std::cout << "read" << std::endl;
         auto self(shared_from_this());
-        async_read_until(socket_, buf, "\n", [this, self](boost::system::error_code error_code,
-                                                          std::size_t size) {
-            if(!error_code)
+        async_read_until(socket_, buf, "\n",
+                         [this, self](boost::system::error_code error_code, std::size_t size) {
+            if(!error_code) {
                 on_read(error_code, size);
+            }
             else
                 room_.leave(shared_from_this());
         });
@@ -108,6 +116,7 @@ private:
     {
         if(!error)
         {
+            std::cout << "Hit" << std::endl;
             std::stringstream message;
             message << socket_.remote_endpoint(error) << ": " << std::istream(&buf).rdbuf();
             buf.consume(bytes_transferred);
@@ -116,24 +125,29 @@ private:
         }
         else
         {
-            socket_.close();
+            socket_.close(error);
             room_.leave(shared_from_this());
         }
     }
-    void on_write() {
+
+    void on_write()
+    {
         auto self(shared_from_this());
-        async_write(socket_, boost::asio::buffer(message_que.front()),
-                    [this, self](const boost::system::error_code& error, std::size_t bytes_transferred) {
-                        if(!error) {
-                            message_que.pop_front();
-                            if (!message_que.empty()) {
-                                on_write();
-                            }
-                        } else {
-                            room_.leave(shared_from_this());
-                        }
-                    });
+        ::async_write(socket_,boost::asio::buffer(
+                message_que.front().data(),message_que.front().length()),
+                      [this, self](boost::system::error_code ec, std::size_t size) {
+            if (!ec) {
+                message_que.pop_front();
+                if (message_que.empty())
+                {
+                    on_write();
+                }
+            } else {
+                room_.leave(shared_from_this());
+            }
+        });
     }
+
 
 private:
     chat_room& room_;
@@ -153,24 +167,30 @@ public:
 
     void async_accept() {
         socket.emplace(io_context);
-        acceptor.async_accept(*socket,[&] (boost::system::error_code err) {
-                    if(!err) {
-                        std::make_shared<session>(std::move(*socket), room_)->start();
-                    }
-                    async_accept();
-                });
+        acceptor.async_accept(*socket, [&] (boost::system::error_code err) {
+            if (!err) {
+                std::make_shared<session>(std::move(*socket), room_)->start();
+                std::cout << "client Connected " << std::endl;
+            }
+            async_accept();
+        });
     }
 private:
-    io_context& io_context;
-    ip::tcp::acceptor acceptor;
     std::optional<ip::tcp::socket> socket;
+    boost::asio::io_context& io_context;
+    ip::tcp::acceptor acceptor;
     chat_room room_;
 };
 
 int main() {
-    io_context io_context;
-    server srv(io_context, 1234);
-    srv.async_accept();
-    io_context.run();
+    try {
+        io_context io_context;
+        server srv(io_context, 1234);
+        srv.async_accept();
+        io_context.run();
+    }
+    catch (std::exception& e) {
+        std::cerr << "Exception: " << e.what() << "\n";
+    }
     return 0;
 }
