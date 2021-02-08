@@ -101,6 +101,7 @@ int main() {
         std::thread t([&io_context](){io_context.run();});
         std::string line;
         while (std::getline(std::cin, line)) {
+            line = line + "\n";
             client.write(line);
         }
         client.close();
